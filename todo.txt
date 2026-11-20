@@ -1,0 +1,6 @@
+
+
+dotnet run --project .\ScoreBoard.csproj -c Debug
+
+
+dotnet build .\ScoreBoard.csproj -c Release
