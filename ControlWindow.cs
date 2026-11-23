@@ -46,13 +46,14 @@ internal sealed class ControlWindow : Form
         Font = new Font("Segoe UI", 10);
         StartPosition = FormStartPosition.CenterScreen;
         MinimumSize = new Size(770, 648);
-        ClientSize = new Size(1060, 755);
+        ClientSize = new Size(1060, 793);
 
-        var page = Grid(1, 5);
+        var page = Grid(1, 6);
         page.Padding = new Padding(22, 11, 22, 11);
         page.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
         page.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         page.RowStyles.Add(new RowStyle(SizeType.Absolute, 43));
+        page.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
         page.RowStyles.Add(new RowStyle(SizeType.Absolute, 224));
         page.RowStyles.Add(new RowStyle(SizeType.Absolute, 55));
         Controls.Add(page);
@@ -61,13 +62,17 @@ internal sealed class ControlWindow : Form
         preview = new BoardView(match) { Dock = DockStyle.Fill, Margin = new Padding(0, 5, 0, 10) };
         page.Controls.Add(preview, 0, 1);
 
-        var displayBar = Grid(5, 1);
+        var displayBar = Grid(7, 1);
         displayBar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 91));
+        displayBar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 94));
+        displayBar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 132));
         displayBar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         displayBar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 195));
         displayBar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 12));
         displayBar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 155));
         displayBar.Controls.Add(Caption("Önizleme", 10, MutedColor), 0, 0);
+        displayBar.Controls.Add(Caption("Arka plan", 10, MutedColor), 1, 0);
+        displayBar.Controls.Add(BuildBackgroundPicker(), 2, 0);
 
         monitors.Dock = DockStyle.Top;
         monitors.Margin = new Padding(0, 7, 0, 0);
@@ -84,10 +89,11 @@ internal sealed class ControlWindow : Form
             preferredDevice = item.Monitor.DeviceName;
             display?.MoveTo(item.Monitor);
         };
-        displayBar.Controls.Add(monitors, 2, 0);
+        displayBar.Controls.Add(monitors, 4, 0);
         displayButton = ActionButton("Tam ekran aç", (_, _) => ToggleDisplay(), true);
-        displayBar.Controls.Add(displayButton, 4, 0);
+        displayBar.Controls.Add(displayButton, 6, 0);
         page.Controls.Add(displayBar, 0, 2);
+        page.Controls.Add(BuildHeaderControls(), 0, 3);
 
         var controls = Grid(5, 1);
         controls.Margin = new Padding(0, 10, 0, 0);
@@ -129,7 +135,7 @@ internal sealed class ControlWindow : Form
         }), 2, 1);
         clockContent.Controls.Add(clockFields, 0, 3);
         controls.Controls.Add(clockPanel, 4, 0);
-        page.Controls.Add(controls, 0, 3);
+        page.Controls.Add(controls, 0, 4);
 
         var footer = Grid(2, 1);
         footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -137,7 +143,7 @@ internal sealed class ControlWindow : Form
         footer.Padding = new Padding(0, 8, 0, 0);
         footer.Controls.Add(Caption("Tam ekrandan çıkmak için Esc tuşuna basın.", 9, MutedColor), 0, 0);
         footer.Controls.Add(ActionButton("Maçı sıfırla", (_, _) => ResetMatch()), 1, 0);
-        page.Controls.Add(footer, 0, 4);
+        page.Controls.Add(footer, 0, 5);
 
         refresh.Tick += (_, _) =>
         {
@@ -149,9 +155,12 @@ internal sealed class ControlWindow : Form
             else if (match.Clock.Seconds != displayedSeconds ||
                 DateTime.Now.Ticks / TimeSpan.TicksPerMinute != displayedLocalMinute)
                 UpdateBoard();
+            else if (match.IsHeaderScrolling)
+                InvalidateHeaders();
         };
         RefreshMonitors();
         UpdateBoard();
+        UpdateHeader();
         refresh.Start();
     }
 
@@ -184,9 +193,132 @@ internal sealed class ControlWindow : Form
         catch (Exception error) when (error is IOException || error is UnauthorizedAccessException || error is SerializationException)
         {
             if (e.CloseReason == CloseReason.UserClosing)
-                MessageBox.Show(this, "Takım ve ekran ayarları kaydedilemedi.", "ScoreBoard", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show(this, "Ayarlar kaydedilemedi.", "ScoreBoard", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
         base.OnFormClosing(e);
+    }
+
+    private ComboBox BuildBackgroundPicker()
+    {
+        var tones = new[]
+        {
+            (Name: "Krem", Value: Match.DefaultBoardBackground),
+            (Name: "Beyaz", Value: Color.White),
+            (Name: "Açık gri", Value: Color.FromArgb(218, 222, 228)),
+            (Name: "Açık mavi", Value: Color.FromArgb(194, 223, 248)),
+            (Name: "Mint yeşili", Value: Color.FromArgb(197, 232, 214)),
+            (Name: "Açık sarı", Value: Color.FromArgb(249, 234, 178)),
+            (Name: "Lavanta", Value: Color.FromArgb(225, 213, 245)),
+            (Name: "Antrasit", Value: Color.FromArgb(42, 46, 52)),
+            (Name: "Lacivert", Value: Color.FromArgb(27, 49, 83))
+        };
+        var picker = new ComboBox
+        {
+            Dock = DockStyle.Top, Margin = new Padding(0, 7, 0, 0),
+            DropDownStyle = ComboBoxStyle.DropDownList, FlatStyle = FlatStyle.Flat,
+            BackColor = SystemColors.Window, ForeColor = SystemColors.WindowText,
+            AccessibleName = "Tabelanın arka plan rengi"
+        };
+        picker.Items.AddRange(tones.Select(tone => tone.Name).ToArray());
+        picker.SelectedIndexChanged += (_, _) =>
+        {
+            if (picker.SelectedIndex < 0)
+                return;
+
+            var color = tones[picker.SelectedIndex].Value;
+            match.BoardBackground = color;
+            preview.BackColor = color;
+            if (display != null)
+                display.Board.BackColor = color;
+        };
+        picker.SelectedIndex = Math.Max(0,
+            Array.FindIndex(tones, tone => tone.Value.ToArgb() == match.BoardBackground.ToArgb()));
+        return picker;
+    }
+
+    private TableLayoutPanel BuildHeaderControls()
+    {
+        var row = Grid(6, 1);
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 107));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 12));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 155));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 12));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 112));
+        row.Controls.Add(Caption("Üst yazı", 10, MutedColor), 0, 0);
+
+        var input = new TextBox
+        {
+            Text = match.HeaderText, Dock = DockStyle.Top, Margin = new Padding(0, 6, 0, 0),
+            BackColor = FieldColor, ForeColor = TextColor, BorderStyle = BorderStyle.FixedSingle,
+            AccessibleName = "Tabelanın üst yazısı"
+        };
+        input.TextChanged += (_, _) =>
+        {
+            match.HeaderText = input.Text;
+            UpdateHeader();
+        };
+        row.Controls.Add(input, 1, 0);
+
+        var mode = new ComboBox
+        {
+            Dock = DockStyle.Top, Margin = new Padding(0, 6, 0, 0),
+            DropDownStyle = ComboBoxStyle.DropDownList, FlatStyle = FlatStyle.Flat,
+            BackColor = SystemColors.Window, ForeColor = SystemColors.WindowText,
+            AccessibleName = "Üst yazı gösterimi"
+        };
+        mode.Items.AddRange(new[] { "Ortalanmış yazı", "Kayan yazı" });
+        mode.SelectedIndex = match.ScrollHeader ? 1 : 0;
+        mode.SelectedIndexChanged += (_, _) =>
+        {
+            match.ScrollHeader = mode.SelectedIndex == 1;
+            UpdateHeader();
+        };
+        row.Controls.Add(mode, 3, 0);
+
+        var colors = new[]
+        {
+            (Name: "Kırmızı", Value: KnownColor.Red),
+            (Name: "Mavi", Value: KnownColor.Blue),
+            (Name: "Yeşil", Value: KnownColor.Green),
+            (Name: "Sarı", Value: KnownColor.Yellow),
+            (Name: "Turuncu", Value: KnownColor.Orange),
+            (Name: "Mor", Value: KnownColor.Purple),
+            (Name: "Siyah", Value: KnownColor.Black),
+            (Name: "Beyaz", Value: KnownColor.White)
+        };
+        var colorPicker = new ComboBox
+        {
+            Dock = DockStyle.Top, Margin = new Padding(0, 6, 0, 0),
+            DropDownStyle = ComboBoxStyle.DropDownList, FlatStyle = FlatStyle.Flat,
+            BackColor = SystemColors.Window, ForeColor = SystemColors.WindowText,
+            AccessibleName = "Üst yazı rengi"
+        };
+        colorPicker.Items.AddRange(colors.Select(color => color.Name).ToArray());
+        colorPicker.SelectedIndex = Math.Max(0, Array.FindIndex(colors, color => color.Value == match.HeaderColor));
+        match.HeaderColor = colors[colorPicker.SelectedIndex].Value;
+        colorPicker.SelectedIndexChanged += (_, _) =>
+        {
+            match.HeaderColor = colors[colorPicker.SelectedIndex].Value;
+            InvalidateHeaders();
+        };
+        row.Controls.Add(colorPicker, 5, 0);
+        return row;
+    }
+
+    private void UpdateHeader()
+    {
+        match.HeaderScrollTime.Reset();
+        if (match.IsHeaderScrolling)
+            match.HeaderScrollTime.Start();
+        refresh.Interval = match.IsHeaderScrolling ? 33 : 100;
+        InvalidateHeaders();
+    }
+
+    private void InvalidateHeaders()
+    {
+        preview.InvalidateHeader();
+        display?.Board.InvalidateHeader();
     }
 
     private Panel BuildTeamPanel(Team team, string role, Color accent, out Label score)

@@ -11,9 +11,10 @@ internal sealed class BoardView : Control
 {
     private const float LayoutWidth = 1240;
     private const float LayoutHeight = 644;
+    private static readonly RectangleF HeaderBounds = new RectangleF(32, 8, 1176, 65);
     private static readonly Color HomeColor = Color.FromArgb(185, 45, 40);
     private static readonly Color AwayColor = Color.FromArgb(29, 81, 139);
-    private static readonly Color BackgroundColor = Color.FromArgb(241, 240, 234);
+    private static readonly Color ScorePanelColor = Color.FromArgb(252, 251, 247);
     private static readonly Color FrameColor = Color.FromArgb(35, 39, 43);
     private static readonly Color ClockColor = Color.FromArgb(255, 200, 44);
     private static readonly CultureInfo Turkish = CultureInfo.GetCultureInfo("tr-TR");
@@ -22,10 +23,26 @@ internal sealed class BoardView : Control
     public BoardView(Match match)
     {
         this.match = match;
-        BackColor = BackgroundColor;
+        BackColor = match.BoardBackground;
         AccessibleName = "Canlı skor tabelası";
         SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer |
                  ControlStyles.ResizeRedraw | ControlStyles.UserPaint, true);
+    }
+
+    private float LayoutScale => Math.Min(ClientSize.Width / LayoutWidth, ClientSize.Height / LayoutHeight);
+
+    private PointF LayoutOrigin(float scale) =>
+        new PointF((ClientSize.Width - LayoutWidth * scale) / 2, (ClientSize.Height - LayoutHeight * scale) / 2);
+
+    public void InvalidateHeader()
+    {
+        float scale = LayoutScale;
+        var origin = LayoutOrigin(scale);
+        Invalidate(Rectangle.FromLTRB(
+            (int)Math.Floor(origin.X + HeaderBounds.Left * scale),
+            (int)Math.Floor(origin.Y + HeaderBounds.Top * scale),
+            (int)Math.Ceiling(origin.X + HeaderBounds.Right * scale),
+            (int)Math.Ceiling(origin.Y + HeaderBounds.Bottom * scale)));
     }
 
     protected override void OnPaint(PaintEventArgs e)
@@ -39,13 +56,18 @@ internal sealed class BoardView : Control
         graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
         graphics.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
 
-        float scale = Math.Min(ClientSize.Width / LayoutWidth, ClientSize.Height / LayoutHeight);
-        graphics.TranslateTransform((ClientSize.Width - LayoutWidth * scale) / 2, (ClientSize.Height - LayoutHeight * scale) / 2);
+        float scale = LayoutScale;
+        var origin = LayoutOrigin(scale);
+        graphics.TranslateTransform(origin.X, origin.Y);
         graphics.ScaleTransform(scale, scale);
 
-        DrawText(graphics, "ŞİLE STADI", new RectangleF(32, 8, 1176, 65), 48, FrameColor);
+        bool darkBackground = BackColor.GetBrightness() < 0.5f;
+        DrawHeader(graphics, darkBackground);
+        if (e.ClipRectangle.Bottom <= origin.Y + 85 * scale)
+            return;
+
         FillRounded(graphics, new RectangleF(24, 85, 1192, 486), 15, FrameColor);
-        FillRounded(graphics, new RectangleF(34, 95, 1172, 466), 8, Color.FromArgb(252, 251, 247));
+        FillRounded(graphics, new RectangleF(34, 95, 1172, 466), 8, GetScorePanelColor());
 
         DrawTeamName(graphics, match.Home, HomeColor, 44);
         DrawTeamName(graphics, match.Away, AwayColor, 632);
@@ -68,7 +90,60 @@ internal sealed class BoardView : Control
         graphics.Restore(clockTransform);
 
         string localDateTime = DateTime.Now.ToString("dd MMMM yyyy  ·  HH:mm", Turkish);
-        DrawText(graphics, localDateTime, new RectangleF(32, 576, 1176, 56), 30, FrameColor);
+        DrawText(graphics, localDateTime, new RectangleF(32, 576, 1176, 56), 30,
+            darkBackground ? Color.WhiteSmoke : FrameColor);
+    }
+
+    private Color GetScorePanelColor()
+    {
+        Color background = BackColor;
+        if (background.ToArgb() == Match.DefaultBoardBackground.ToArgb())
+            return ScorePanelColor;
+
+        return Color.FromArgb(
+            (ScorePanelColor.R * 3 + background.R) / 4,
+            (ScorePanelColor.G * 3 + background.G) / 4,
+            (ScorePanelColor.B * 3 + background.B) / 4);
+    }
+
+    private void DrawHeader(Graphics graphics, bool darkBackground)
+    {
+        string text = match.HeaderText.Trim();
+        if (text.Length == 0)
+            return;
+
+        const float fontSize = 48;
+        Color textColor = Color.FromKnownColor(match.HeaderColor);
+        var clip = graphics.Save();
+        graphics.SetClip(HeaderBounds, CombineMode.Intersect);
+        bool needsBackdrop = darkBackground
+            ? match.HeaderColor is KnownColor.Blue or KnownColor.Green or KnownColor.Purple or KnownColor.Black
+            : match.HeaderColor is KnownColor.Yellow or KnownColor.Orange or KnownColor.White;
+        if (needsBackdrop)
+            FillRounded(graphics, HeaderBounds, 8, darkBackground ? Color.WhiteSmoke : FrameColor);
+
+        if (match.ScrollHeader)
+        {
+            const float speed = 180;
+            const float gap = 48;
+            using var format = new StringFormat(StringFormat.GenericTypographic)
+            {
+                LineAlignment = StringAlignment.Center,
+                FormatFlags = StringFormatFlags.NoWrap | StringFormatFlags.NoClip
+            };
+            using var font = new Font("Segoe UI", fontSize, FontStyle.Bold, GraphicsUnit.Pixel);
+            using var brush = new SolidBrush(textColor);
+            float width = graphics.MeasureString(text, font, PointF.Empty, format).Width;
+            float distance = (float)(match.HeaderScrollTime.Elapsed.TotalSeconds * speed %
+                (HeaderBounds.Width + width + gap));
+            var bounds = new RectangleF(HeaderBounds.Right - distance, HeaderBounds.Y, width + gap, HeaderBounds.Height);
+            graphics.DrawString(text, font, brush, bounds, format);
+        }
+        else
+        {
+            DrawText(graphics, text, HeaderBounds, fontSize, textColor);
+        }
+        graphics.Restore(clip);
     }
 
     private static void DrawTeamName(Graphics graphics, Team team, Color accent, float x)

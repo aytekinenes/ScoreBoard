@@ -11,9 +11,18 @@ namespace ScoreBoard;
 
 internal sealed class Match : IDisposable
 {
+    public static readonly Color DefaultBoardBackground = Color.FromArgb(241, 240, 234);
+
     public Team Home { get; } = new Team("Ev Sahibi");
     public Team Away { get; } = new Team("Deplasman");
     public MatchClock Clock { get; } = new MatchClock();
+    public string HeaderText { get; set; } = "ŞİLE STADI";
+    public bool ScrollHeader { get; set; }
+    public KnownColor HeaderColor { get; set; } = KnownColor.Red;
+    public Color BoardBackground { get; set; } = DefaultBoardBackground;
+    public Stopwatch HeaderScrollTime { get; } = new Stopwatch();
+
+    public bool IsHeaderScrolling => ScrollHeader && !string.IsNullOrWhiteSpace(HeaderText);
 
     public void Reset()
     {
@@ -148,6 +157,10 @@ internal sealed class Preferences
     [DataMember] public TeamSettings? Home { get; set; }
     [DataMember] public TeamSettings? Away { get; set; }
     [DataMember] public string? DisplayDevice { get; set; }
+    [DataMember] public string? HeaderText { get; set; }
+    [DataMember] public bool ScrollHeader { get; set; }
+    [DataMember] public KnownColor? HeaderColor { get; set; }
+    [DataMember] public int? BoardBackgroundArgb { get; set; }
 
     public static Preferences Load(Match match)
     {
@@ -164,6 +177,11 @@ internal sealed class Preferences
 
         ApplyTeam(saved.Home, match.Home, "Galatasaray", "ScoreBoard.logo.gs.png");
         ApplyTeam(saved.Away, match.Away, "Fenerbahçe", "ScoreBoard.logo.fb.png");
+        match.HeaderText = saved.HeaderText ?? match.HeaderText;
+        match.ScrollHeader = saved.ScrollHeader;
+        match.HeaderColor = saved.HeaderColor ?? match.HeaderColor;
+        if (saved.BoardBackgroundArgb is int argb)
+            match.BoardBackground = Color.FromArgb(argb);
         return saved;
     }
 
@@ -191,7 +209,11 @@ internal sealed class Preferences
         {
             Home = TeamSettings.Capture(match.Home),
             Away = TeamSettings.Capture(match.Away),
-            DisplayDevice = displayDevice
+            DisplayDevice = displayDevice,
+            HeaderText = match.HeaderText,
+            ScrollHeader = match.ScrollHeader,
+            HeaderColor = match.HeaderColor,
+            BoardBackgroundArgb = match.BoardBackground.ToArgb()
         };
         Directory.CreateDirectory(DirectoryPath);
         string temporaryPath = Path.Combine(DirectoryPath, Guid.NewGuid().ToString("N") + ".tmp");
