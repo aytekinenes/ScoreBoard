@@ -2,17 +2,21 @@ using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Text;
+using System.Globalization;
 using System.Windows.Forms;
 
 namespace ScoreBoard;
 
 internal sealed class BoardView : Control
 {
-    public static readonly Color HomeColor = Color.FromArgb(56, 232, 181);
-    public static readonly Color AwayColor = Color.FromArgb(255, 186, 84);
-    private static readonly Color BackgroundColor = Color.FromArgb(8, 14, 24);
-    private static readonly Color White = Color.FromArgb(246, 250, 255);
-    private static readonly Color Muted = Color.FromArgb(167, 185, 208);
+    private const float LayoutWidth = 1240;
+    private const float LayoutHeight = 644;
+    private static readonly Color HomeColor = Color.FromArgb(185, 45, 40);
+    private static readonly Color AwayColor = Color.FromArgb(29, 81, 139);
+    private static readonly Color BackgroundColor = Color.FromArgb(241, 240, 234);
+    private static readonly Color FrameColor = Color.FromArgb(35, 39, 43);
+    private static readonly Color ClockColor = Color.FromArgb(255, 200, 44);
+    private static readonly CultureInfo Turkish = CultureInfo.GetCultureInfo("tr-TR");
     private readonly Match match;
 
     public BoardView(Match match)
@@ -35,64 +39,42 @@ internal sealed class BoardView : Control
         graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
         graphics.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
 
-        using (var backdrop = new LinearGradientBrush(ClientRectangle, Color.FromArgb(20, 35, 52), BackgroundColor, 85f))
-            graphics.FillRectangle(backdrop, ClientRectangle);
-
-        float ratio = (float)ClientSize.Width / ClientSize.Height;
-        bool portrait = ratio < 1.18f;
-        float height = portrait ? 900 : 640;
-        float width = portrait ? Math.Max(460, Math.Min(900, ratio * height)) : Math.Max(755, Math.Min(1560, ratio * height));
-        float scale = Math.Min(ClientSize.Width / width, ClientSize.Height / height);
-        graphics.TranslateTransform((ClientSize.Width - width * scale) / 2, (ClientSize.Height - height * scale) / 2);
+        float scale = Math.Min(ClientSize.Width / LayoutWidth, ClientSize.Height / LayoutHeight);
+        graphics.TranslateTransform((ClientSize.Width - LayoutWidth * scale) / 2, (ClientSize.Height - LayoutHeight * scale) / 2);
         graphics.ScaleTransform(scale, scale);
 
-        if (portrait)
-            DrawPortrait(graphics, width);
-        else
-            DrawLandscape(graphics, width);
+        DrawText(graphics, "ŞİLE STADI", new RectangleF(32, 8, 1176, 65), 48, FrameColor);
+        FillRounded(graphics, new RectangleF(24, 85, 1192, 486), 15, FrameColor);
+        FillRounded(graphics, new RectangleF(34, 95, 1172, 466), 8, Color.FromArgb(252, 251, 247));
+
+        DrawTeamName(graphics, match.Home, HomeColor, 44);
+        DrawTeamName(graphics, match.Away, AwayColor, 632);
+
+        DrawLogo(graphics, match.Home, HomeColor, new RectangleF(67, 214, 200, 222));
+        DrawLogo(graphics, match.Away, AwayColor, new RectangleF(973, 214, 200, 222));
+        string homeScore = match.Home.Score.ToString();
+        string awayScore = match.Away.Score.ToString();
+        int scoreDigits = Math.Max(homeScore.Length, awayScore.Length);
+        float scoreSize = scoreDigits == 1 ? 266 : scoreDigits == 2 ? 218 : 148;
+        DrawText(graphics, homeScore, new RectangleF(279, 178, 300, 270), scoreSize, HomeColor, "Arial");
+        DrawText(graphics, awayScore, new RectangleF(661, 178, 300, 270), scoreSize, AwayColor, "Arial");
+        FillRounded(graphics, new RectangleF(591, 315, 58, 14), 3, FrameColor);
+
+        FillRounded(graphics, new RectangleF(336, 454, 568, 96), 12, FrameColor);
+        var clockTransform = graphics.Save();
+        graphics.TranslateTransform(620, 454);
+        graphics.ScaleTransform(1.4f, 1);
+        DrawText(graphics, match.Clock.Display, new RectangleF(-185, 0, 370, 96), 94, ClockColor, "Arial");
+        graphics.Restore(clockTransform);
+
+        string localDateTime = DateTime.Now.ToString("dd MMMM yyyy  ·  HH:mm", Turkish);
+        DrawText(graphics, localDateTime, new RectangleF(32, 576, 1176, 56), 30, FrameColor);
     }
 
-    private void DrawLandscape(Graphics graphics, float width)
+    private static void DrawTeamName(Graphics graphics, Team team, Color accent, float x)
     {
-        float middle = width / 2;
-        DrawClock(graphics, middle, 31);
-        float sideWidth = middle - 67;
-        DrawTeam(graphics, match.Home, HomeColor, 41, sideWidth);
-        DrawTeam(graphics, match.Away, AwayColor, width - 41 - sideWidth, sideWidth);
-        FillRounded(graphics, new RectangleF(middle - 16, 416, 32, 7), 3.5f, Muted);
-    }
-
-    private void DrawPortrait(Graphics graphics, float width)
-    {
-        DrawClock(graphics, width / 2, 65);
-        DrawPortraitTeam(graphics, match.Home, HomeColor, width, 245);
-        DrawPortraitTeam(graphics, match.Away, AwayColor, width, 555);
-    }
-
-    private void DrawClock(Graphics graphics, float center, float top)
-    {
-        FillRounded(graphics, new RectangleF(center - 135, top, 270, 130), 25, Color.FromArgb(225, 8, 17, 29));
-        DrawText(graphics, "MAÇ SÜRESİ", new RectangleF(center - 117, top + 13, 234, 24), 17, Muted);
-        DrawText(graphics, match.Clock.Display, new RectangleF(center - 125, top + 39, 250, 80), 69, White, "Arial");
-    }
-
-    private static void DrawTeam(Graphics graphics, Team team, Color accent, float x, float width)
-    {
-        var center = x + width / 2;
-        FillRounded(graphics, new RectangleF(x, 174, width, 419), 24, Color.FromArgb(215, 12, 23, 37));
-        FillRounded(graphics, new RectangleF(center - 31, 171, 62, 5), 2.5f, accent);
-        DrawLogo(graphics, team, accent, new RectangleF(center - 66, 226, 132, 132));
-        DrawText(graphics, team.Score.ToString(), new RectangleF(x + 10, 356, width - 20, 162), 156, White, "Arial");
-        DrawText(graphics, team.Name, new RectangleF(x + 14, 519, width - 28, 57), 39, White);
-    }
-
-    private static void DrawPortraitTeam(Graphics graphics, Team team, Color accent, float width, float y)
-    {
-        FillRounded(graphics, new RectangleF(29, y, width - 58, 239), 23, Color.FromArgb(215, 12, 23, 37));
-        FillRounded(graphics, new RectangleF(60, y - 3, 62, 5), 2.5f, accent);
-        DrawLogo(graphics, team, accent, new RectangleF(61, y + 48, 107, 107));
-        DrawText(graphics, team.Score.ToString(), new RectangleF(185, y + 40, width - 235, 132), 120, White, "Arial");
-        DrawText(graphics, team.Name, new RectangleF(48, y + 174, width - 96, 51), 38, White);
+        FillRounded(graphics, new RectangleF(x, 105, 564, 86), 9, accent);
+        DrawText(graphics, team.Name.ToUpper(Turkish), new RectangleF(x + 18, 105, 528, 86), 64, Color.White);
     }
 
     private static void DrawLogo(Graphics graphics, Team team, Color accent, RectangleF bounds)
@@ -112,7 +94,7 @@ internal sealed class BoardView : Control
         FillRounded(graphics, badge, 19, Color.FromArgb(28, accent));
         string[] words = team.Name.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
         string initials = words.Length == 1 ? words[0].Substring(0, 1) : words[0].Substring(0, 1) + words[1].Substring(0, 1);
-        DrawText(graphics, initials.ToUpper(new System.Globalization.CultureInfo("tr-TR")), badge, size * 0.43f, accent);
+        DrawText(graphics, initials.ToUpper(Turkish), badge, size * 0.43f, accent);
     }
 
     private static void DrawText(Graphics graphics, string text, RectangleF bounds, float maximumSize, Color color,

@@ -162,9 +162,27 @@ internal sealed class Preferences
             saved = new Preferences();
         }
 
-        saved.Home?.Apply(match.Home);
-        saved.Away?.Apply(match.Away);
+        ApplyTeam(saved.Home, match.Home, "Galatasaray", "ScoreBoard.logo.gs.png");
+        ApplyTeam(saved.Away, match.Away, "Fenerbahçe", "ScoreBoard.logo.fb.png");
         return saved;
+    }
+
+    private static void ApplyTeam(TeamSettings? saved, Team team, string defaultName, string logoResource)
+    {
+        if (saved != null)
+        {
+            saved.Apply(team);
+            return;
+        }
+
+        team.Name = defaultName;
+        using var logo = typeof(Preferences).Assembly.GetManifestResourceStream(logoResource);
+        if (logo == null)
+            return;
+
+        using var data = new MemoryStream();
+        logo.CopyTo(data);
+        team.SetLogo(data.ToArray());
     }
 
     public static void Save(Match match, string? displayDevice)

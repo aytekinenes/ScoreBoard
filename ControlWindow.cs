@@ -32,6 +32,7 @@ internal sealed class ControlWindow : Form
     private DisplayWindow? display;
     private string? preferredDevice;
     private int displayedSeconds = -1;
+    private long displayedLocalMinute;
     private bool updatingMonitors;
 
     public ControlWindow()
@@ -95,8 +96,8 @@ internal sealed class ControlWindow : Form
         controls.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33f));
         controls.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 12));
         controls.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.34f));
-        controls.Controls.Add(BuildTeamPanel(match.Home, "Ev sahibi", BoardView.HomeColor, out homeScore), 0, 0);
-        controls.Controls.Add(BuildTeamPanel(match.Away, "Deplasman", BoardView.AwayColor, out awayScore), 2, 0);
+        controls.Controls.Add(BuildTeamPanel(match.Home, "Ev sahibi", Color.FromArgb(255, 140, 134), out homeScore), 0, 0);
+        controls.Controls.Add(BuildTeamPanel(match.Away, "Deplasman", Color.FromArgb(136, 190, 251), out awayScore), 2, 0);
 
         var clockPanel = Card(out var clockContent);
         clockContent.RowStyles.Add(new RowStyle(SizeType.Absolute, 29));
@@ -145,7 +146,8 @@ internal sealed class ControlWindow : Form
                 match.Clock.Pause();
                 UpdateBoard();
             }
-            else if (match.Clock.Seconds != displayedSeconds)
+            else if (match.Clock.Seconds != displayedSeconds ||
+                DateTime.Now.Ticks / TimeSpan.TicksPerMinute != displayedLocalMinute)
                 UpdateBoard();
         };
         RefreshMonitors();
@@ -293,6 +295,7 @@ internal sealed class ControlWindow : Form
         clockButton.Text = match.Clock.IsRunning ? "Duraklat" : match.Clock.Seconds == 0 ? "Başlat" : "Devam et";
         clockButton.Enabled = match.Clock.Seconds < 59999;
         displayedSeconds = match.Clock.Seconds;
+        displayedLocalMinute = DateTime.Now.Ticks / TimeSpan.TicksPerMinute;
         preview.Invalidate();
         display?.Board.Invalidate();
     }

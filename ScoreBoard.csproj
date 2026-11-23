@@ -13,5 +13,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="System.Runtime.Serialization" />
+    <EmbeddedResource Include="logo\gs.png" />
+    <EmbeddedResource Include="logo\fb.png" />
   </ItemGroup>
 </Project>
